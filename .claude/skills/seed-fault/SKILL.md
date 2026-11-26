@@ -1,40 +1,33 @@
 ---
 name: seed-fault
-description: Deliberately break the pipeline in one described way, record whether the hook and the tests catch it, then restore. Use when asked to seed, inject, or test a fault, or to check whether the suite would notice a specific bug.
+description: Break the pipeline on purpose in one way, see if the hook and tests catch it, then put it back. Use when I ask to seed a fault or check if the tests would notice a bug.
 allowed-tools: Read, Edit, Bash(make*), Bash(python -m pytest*), Bash(git diff*), Bash(git status), Bash(git checkout -- src/*), Bash(git checkout -- tests/*), Bash(git checkout -- data/raw/*)
 ---
 
-# Current state
+# What's changed right now
 
 !`git status --short`
 
-# Seeding a fault: $ARGUMENTS
+# Fault to try: $ARGUMENTS
 
-Work in this order. The point is to find out what the guards miss, so
-never weaken a test to make the fault "caught".
+1. **Check that nothing else is changed.** If `git status` above shows edits in
+   `src/` or `tests/`, stop and ask me first.
+2. **Run `make test`** and write down how many tests pass.
+3. **Make the fault.** Make the smallest change that causes it, using the Edit
+   tool if the file is in `src/` (so the hook runs). Don't change anything else.
+   Show me the `git diff`.
+4. **Write down what happened, word for word:**
+   - what the hook said after the edit (or that it said nothing)
+   - the FAILED / ERROR lines and the pass count from `make test`
+5. **Say if it was caught:**
+   - **Caught by the hook:** the hook failed right after the edit
+   - **Caught by `make test` only:** the hook was quiet but a test failed
+   - **Missed:** everything passed. Tell me which test would have caught it,
+     but don't write it unless I ask.
+6. **Put it back.** Run `git checkout -- <files you changed>`, then `make test`
+   and check you get the same pass count as step 2.
+7. **Give me a short summary** I can paste into `docs/SEEDED_FAULTS.md`: the fault,
+   the diff, the hook output, the test output, whether it was caught, and that it
+   was put back.
 
-1. **Start clean.** If `git status` above shows uncommitted changes under
-   `src/` or `tests/`, stop and ask. A fault seeded on top of other edits
-   cannot be cleanly restored.
-2. **Run `make test` first** and confirm it is green. Record the pass count.
-3. **Make the smallest edit that produces the fault**, with the Edit tool
-   when the fault lives in `src/` (so the PostToolUse hook runs). Change
-   nothing else. Show the `git diff`.
-4. **Record what fired, verbatim:**
-   - the hook feedback you received after the edit (or "hook exit 0, no
-     feedback" / "hook did not run" if the change was not an Edit to src/),
-   - the summary lines of `make test` (FAILED / ERROR lines and the count).
-5. **Classify the result** in one line:
-   - `CAUGHT by hook` (exit 2 on the edit itself),
-   - `CAUGHT by make test only` (hook silent, suite red),
-   - `MISSED` (everything green). A miss is a finding: name the test that
-     would have caught it, but do not write it unless asked.
-6. **Restore.** `git checkout -- <the files you changed>`, then run
-   `make test` and confirm the pass count from step 2. If raw data was
-   touched, check its sha256 still begins `a6bed1577f6e4de5`.
-7. **Report** a short block that can be pasted into
-   `docs/SEEDED_FAULTS.md`: fault, diff, hook output, test output,
-   classification, restored yes/no.
-
-Never commit a seeded fault from this skill and never edit
-`data/raw/bike_daily.csv` with Edit or Write (the settings deny it).
+Don't commit the fault, and don't change a test to make the fault "caught".
