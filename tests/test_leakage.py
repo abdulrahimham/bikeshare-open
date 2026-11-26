@@ -4,10 +4,11 @@ test_no_forbidden_features is the single most valuable test in this repo:
 casual + registered == cnt exactly, so any model handed those columns
 scores R^2 = 1.0 and looks brilliant while having learned nothing.
 """
+import numpy as np
 import pandas as pd
 import pytest
 
-from src.config import FORBIDDEN, TARGET
+from src.config import FORBIDDEN, LEAKAGE_COLS, TARGET
 from src.features import build_features, encode_weather, feature_columns
 from src.ingest import load_raw
 
@@ -29,6 +30,42 @@ def test_no_forbidden_features(feats):
     exactly the fault the Step 7 hook demonstrates."""
     cols = set(feature_columns(feats))
     assert not (cols & FORBIDDEN), f"forbidden columns in feature set: {cols & FORBIDDEN}"
+
+
+def test_no_feature_restates_a_leakage_column(feats):
+    """Catches leakage from the *data*, not from names.
+
+    test_no_forbidden_features only checks names, and feature_columns() is a
+    denylist, so `out["riders_a"] = out["casual"]` sails straight through it.
+    This fails if any feature is an affine copy of a LEAKAGE_COLS column, or
+    if the features jointly reproduce the target exactly (e.g. casual and
+    registered both smuggled in under new names: their sum *is* cnt).
+    """
+    cols = feature_columns(feats)
+    X = feats[cols].astype(float)
+
+    # 1. No single feature is an exact affine function of a leakage column.
+    restated = []
+    for f in cols:
+        x = X[f].to_numpy()
+        if np.std(x) == 0:
+            continue  # a constant restates nothing, and corrcoef would be NaN
+        for leak in sorted(LEAKAGE_COLS):
+            r = np.corrcoef(x, feats[leak].astype(float).to_numpy())[0, 1]
+            if abs(r) > 0.9999:
+                restated.append(f"{f} ~ {leak} (r={r:+.6f})")
+    assert not restated, f"features that restate a leakage column: {restated}"
+
+    # 2. All features plus an intercept must not reproduce the target exactly.
+    A = np.column_stack([np.ones(len(X)), X.to_numpy()])
+    y = feats[TARGET].astype(float).to_numpy()
+    coef, *_ = np.linalg.lstsq(A, y, rcond=None)
+    max_resid = np.abs(y - A @ coef).max()
+    assert max_resid >= 1e-6, (
+        f"features reproduce {TARGET} exactly by least squares "
+        f"(max |residual| = {max_resid:.2e}): some combination of feature "
+        "columns is an arithmetic identity for the target"
+    )
 
 
 def test_lags_are_true_calendar_lags(feats):
