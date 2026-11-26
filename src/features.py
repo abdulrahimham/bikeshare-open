@@ -26,6 +26,11 @@ def encode_weather(series: pd.Series) -> pd.Series:
     """
     known = series.dropna()
     unknown = set(known.unique()) - set(WEATHER_ORDER)
+    if unknown:
+        raise ValueError(
+            f"unknown weather labels {sorted(unknown)}; "
+            f"expected one of {sorted(WEATHER_ORDER)}"
+        )
     return series.map(WEATHER_ORDER).astype(float)
 
 

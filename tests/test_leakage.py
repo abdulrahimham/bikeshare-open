@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from src.config import FORBIDDEN, TARGET
-from src.features import build_features, feature_columns
+from src.features import build_features, encode_weather, feature_columns
 from src.ingest import load_raw
 
 
@@ -79,3 +79,11 @@ def test_no_missing_values(feats):
 def test_dates_are_sorted_and_unique(feats):
     assert feats.dteday.is_monotonic_increasing
     assert feats.dteday.is_unique
+
+
+def test_weather_encoder_rejects_unknown_labels():
+    """The real data only holds GOOD/MISTY/BAD, so no data-driven test can
+    see a missing guard. An unseen label must raise, not silently become NaN
+    and get dropped by dropna()."""
+    with pytest.raises(ValueError):
+        encode_weather(pd.Series(["GOOD", "STORM", "BAD"]))
