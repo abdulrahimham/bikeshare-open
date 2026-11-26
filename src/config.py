@@ -5,6 +5,9 @@ ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data" / "raw" / "bike_daily.csv"
 PROCESSED = ROOT / "data" / "processed" / "features.parquet"
 METRICS = ROOT / "reports" / "metrics.json"
+# Exploratory target-transform runs (python -m src.train --target diff|ratio).
+# Never written to METRICS.
+METRICS_TARGET = ROOT / "reports" / "metrics_target_{name}.json"
 
 # sha256 of the committed raw file (git show HEAD:data/raw/bike_daily.csv).
 # load_raw() refuses to read a file that does not match. If the raw data is
