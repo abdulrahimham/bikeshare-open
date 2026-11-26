@@ -466,3 +466,39 @@ tests/test_leakage.py:57: AssertionError
 FAILED tests/test_leakage.py::test_no_feature_restates_a_leakage_column - Ass...
 1 failed, 9 passed in 0.38s
 ```
+
+---
+
+## Extra: the first run of the `/seed-fault` skill
+
+`/seed-fault change cnt_lag_7 to use shift(6) instead of shift(LAG_WARMUP)` came back **MISSED**:
+- **Hook:** exit 0, with no feedback.
+- **`make test`:** 19 passed, the same as before.
+- **Why:** the only calendar-lag test checks `cnt_lag_1`, and the row-loss bound does not move.
+
+The skill restored the file. I then added `test_lag_7_is_a_true_calendar_lag`, and with the fault re-seeded the hook now fires:
+
+```
+--- stderr ---
+Leakage tests failed after editing <repo>/src/features.py:
+        The 7 is hard-coded on purpose: the feature is built with
+        shift(LAG_WARMUP), so deriving the expected offset from config would let
+        a changed LAG_WARMUP move the feature and the test together."""
+        by_date = feats.set_index("dteday")[TARGET]
+        checked = 0
+        for date, lag in feats.set_index("dteday").cnt_lag_7.items():
+            prev = date - pd.Timedelta(days=7)
+            if prev in by_date.index:
+>               assert lag == pytest.approx(by_date[prev]), f"bad lag_7 at {date.date()}"
+E               AssertionError: bad lag_7 at 2011-01-17
+E               assert 1263.0 == 1321.0 ± 0.001321
+E                 
+E                 comparison failed
+E                 Obtained: 1263.0
+E                 Expected: 1321.0 ± 0.001321
+
+tests/test_leakage.py:94: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_leakage.py::test_lag_7_is_a_true_calendar_lag - AssertionEr...
+1 failed, 10 passed in 0.37s
+```
