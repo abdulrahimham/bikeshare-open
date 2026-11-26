@@ -26,8 +26,9 @@ rides) from calendar, weather, and lagged-demand features.
 - `data/raw/` is immutable by any route, Bash included. `load_raw()` checks
   `RAW_SHA256`; never "fix" a mismatch by editing the hash. A new raw column
   must be added to `FORBIDDEN`, `RAW_FEATURE_COLS` or `SOURCE_COLS` first.
-- `python -m src.train --target diff|ratio` is exploratory: run it with
-  `--splits valid` only. `reports/metrics.json` is always the raw target.
+- `python -m src.train --target diff|ratio` is exploratory: iterate with
+  `--splits valid`. Test is scored once per question, after the choice is
+  logged in `docs/DECISIONS.md`. `reports/metrics.json` is the raw target.
 - Report the mean baseline **and** the persistence baseline (yesterday's
   count) alongside every model. A negative R^2 is a finding, not a bug
   to hide.
