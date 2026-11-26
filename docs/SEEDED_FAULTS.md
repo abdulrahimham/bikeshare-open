@@ -1,9 +1,19 @@
 # Seeded faults (Exercise 2)
 
-Each fault was seeded by a headless Claude Code session (`claude -p`, Claude Code 2.1.332) running in this repo, so the
-project's `.claude/settings.json` hook fired exactly as it would in an interactive session. The hook output below is the
-`stderr` the hook sent back to the agent, copied from the session's `stream-json` transcript. The `make test` output was
-captured right after each fault was seeded. The only edit to the pasted text: the absolute path of the repo is shortened to `<repo>`.
+**Model and setup:**
+- Every agent session was Claude Code 2.1.332 driving `claude-opus-5-5`, not a local Ollama model. The README allows a
+  paid Anthropic plan in place of Ollama; the override lives in the git-ignored `.claude/settings.local.json`.
+- The fault sessions below were run headless (`claude -p`) in an earlier working copy built from `bikeshare-starter.zip`.
+  That starter's `src/`, `tests/`, `.claude/hooks/` and `data/raw/` are byte-identical to `bikeshare-open-starter.zip`,
+  so the commits were then replayed onto this repo in the same order.
+- To check that the hook behaves the same here, I re-seeded fault 1 in `bikeshare-open` itself. The hook fired with
+  exit 2 and the same failure, now caught by two tests:
+  `FAILED tests/test_leakage.py::test_no_forbidden_features` and `FAILED tests/test_leakage.py::test_no_feature_restates_a_leakage_column`.
+
+**How the output was captured:**
+- The hook output below is the `stderr` the hook sent back to the agent, copied from each session's `stream-json` transcript.
+- The `make test` output was captured right after each fault was seeded.
+- The only edit to pasted text: the absolute path of the repo is shortened to `<repo>`.
 
 "Turns to fix" is `num_turns` from a separate, fresh Claude Code session that was told only "make test is failing in this
 repo. Find the cause and fix it" (faults 1 and 2), or was told what the fault was (faults 3 and 4, where no test was red).
