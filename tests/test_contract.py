@@ -3,7 +3,14 @@ import pandas as pd
 import pytest
 from sklearn.metrics import r2_score
 
-from src.config import LAG_WARMUP, TARGET
+from src.config import (
+    FORBIDDEN,
+    LAG_WARMUP,
+    RAW,
+    RAW_FEATURE_COLS,
+    SOURCE_COLS,
+    TARGET,
+)
 from src.features import build_features, feature_columns, reindex_to_calendar
 from src.ingest import load_raw
 from src.train import MODELS, temporal_split
@@ -17,6 +24,24 @@ def raw():
 @pytest.fixture(scope="module")
 def feats(raw):
     return build_features(raw)
+
+
+def unclassified_columns(path) -> set[str]:
+    """Raw columns in `path` that config.py does not explicitly classify.
+    Reads only the header, so it does not depend on the feature builder."""
+    header = set(pd.read_csv(path, nrows=0).columns)
+    return header - FORBIDDEN - RAW_FEATURE_COLS - SOURCE_COLS - {"dteday"}
+
+
+def test_every_raw_column_is_classified():
+    """feature_columns() is a denylist: a new numeric raw column would become
+    a model feature with no one deciding it should. Every raw column must be
+    named in src/config.py, not just "whatever feature_columns returns"."""
+    unclassified = unclassified_columns(RAW)
+    assert not unclassified, (
+        f"raw columns not classified in src/config.py: {sorted(unclassified)}; "
+        "add each to FORBIDDEN, RAW_FEATURE_COLS or SOURCE_COLS"
+    )
 
 
 def test_calendar_is_complete_before_lagging(raw):
