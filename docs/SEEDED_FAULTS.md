@@ -1,29 +1,28 @@
 # Seeded faults (Exercise 2)
 
-**Model and setup:**
-- Every agent session was Claude Code 2.1.332 driving `claude-opus-5-5`, not a local Ollama model. The README allows a
-  paid Anthropic plan in place of Ollama; the override lives in the git-ignored `.claude/settings.local.json`.
-- The fault sessions below were run headless (`claude -p`) in an earlier working copy built from `bikeshare-starter.zip`.
-  That starter's `src/`, `tests/`, `.claude/hooks/` and `data/raw/` are byte-identical to `bikeshare-open-starter.zip`,
-  so the commits were then replayed onto this repo in the same order.
-- To check that the hook behaves the same here, I re-seeded fault 1 in `bikeshare-open` itself. The hook fired with
-  exit 2 and the same failure, now caught by two tests:
-  `FAILED tests/test_leakage.py::test_no_forbidden_features` and `FAILED tests/test_leakage.py::test_no_feature_restates_a_leakage_column`.
+**Setup:**
+- I used Claude Code 2.1.332 with `claude-opus-5-5`, not a local Ollama model. The README says that's allowed.
+- I ran the faults in a copy of the repo made from `bikeshare-starter.zip`. Its code, tests, hook and data are exactly
+  the same as the open starter's. I then moved the commits over to this repo in the same order.
+- To make sure the hook works the same here, I broke fault 1 again in `bikeshare-open`. The hook caught it, with two tests
+  failing: `FAILED tests/test_leakage.py::test_no_forbidden_features` and
+  `FAILED tests/test_leakage.py::test_no_feature_restates_a_leakage_column`.
 
-**How the output was captured:**
-- The hook output below is the `stderr` the hook sent back to the agent, copied from each session's `stream-json` transcript.
-- The `make test` output was captured right after each fault was seeded.
-- The only edit to pasted text: the absolute path of the repo is shortened to `<repo>`.
+**Where the output comes from:**
+- The hook output is copied from each agent session's log.
+- The `make test` output was saved right after each fault was added.
+- The only thing I changed in the pasted output is shortening the long repo path to `<repo>`.
 
-"Turns to fix" is `num_turns` from a separate, fresh Claude Code session that was told only "make test is failing in this
-repo. Find the cause and fix it" (faults 1 and 2), or was told what the fault was (faults 3 and 4, where no test was red).
+**"Turns to fix"** is how many turns a brand-new agent session needed:
+- **Faults 1 and 2:** it was only told "make test is failing, find and fix it".
+- **Faults 3 and 4:** no test failed, so I had to tell it what was wrong.
 
 | # | Fault | Hook fired? | `make test` | Turns to fix |
 |---|---|---|---|---|
 | 1 | `"casual"` appended to `feature_columns()` | Yes, exit 2 | 1 failed | 5 |
 | 2 | `.shift(1)` deleted from `cnt_roll_7` | Yes, exit 2 | 1 failed | 6 |
-| 3 | `raise` removed from `encode_weather` | No (exit 0) | **green** | 8 (included writing the missing test) |
-| 4 | Raw CSV overwritten from Bash | No (hook never ran) | **green** | 11 (included writing the hash guard) |
+| 3 | `raise` removed from `encode_weather` | No (exit 0) | **all passed** | 8 (included writing the missing test) |
+| 4 | Raw CSV overwritten from Bash | No (hook never ran) | **all passed** | 11 (included writing the hash guard) |
 
 ---
 
@@ -92,9 +91,9 @@ FAILED tests/test_leakage.py::test_no_forbidden_features - AssertionError: fo...
 make: *** [Makefile:15: test] Error 1
 ```
 
-**Fix:** a fresh session found it in **5 turns** and removed `+ ["casual"]`. One caveat: I committed the fault before
-running the fixer, and it read the commit message ("Seed fault 1: add forbidden column casual..."), so this count is
-lower than a blind fix would be. For faults 2 and 3, I ran the fixer before committing.
+**Fix:** **5 turns**. The agent removed `+ ["casual"]`. One catch: I committed the fault first, and the agent read
+the commit message, which gave away the answer. So it probably had it easier than a real fix. For the later faults,
+I ran the fix before committing.
 
 ---
 
@@ -165,13 +164,10 @@ FAILED tests/test_leakage.py::test_rolling_mean_excludes_today - assert np.fl...
 make: *** [Makefile:15: test] Error 1
 ```
 
-**Fix:** **6 turns**. The fixer ran the tests, read `git diff` (the fault was still uncommitted), and put `.shift(1)`
-back before `.rolling()`.
+**Fix:** **6 turns**. The agent ran the tests, looked at `git diff`, and put `.shift(1)` back before `.rolling()`.
 
-Note that the failing test checks a single date (row 200). The 7-day rolling mean is wrong on every row once the shift
-is gone, so one date is enough here. But the starter test wraps its check in `if all(d in by_date.index ...)`, which means
-it would silently pass if that window ever hit a missing day. My new `test_rolling_std_excludes_today` asserts the
-window is complete instead of skipping.
+One thing I noticed: the starter test only checks one date, and it quietly skips the check if any day in the week is
+missing. That works here, but my new test for `cnt_roll_std_7` fails instead of skipping, which is safer.
 
 ---
 
@@ -193,7 +189,7 @@ index e51b20d..99838af 100644
      return series.map(WEATHER_ORDER).astype(float)
 ```
 
-**Hook stderr:** the hook ran and passed, so nothing reached the agent.
+**Hook stderr:** the hook ran but passed, so the agent got no warning.
 
 ```
 exit_code: 0
@@ -201,7 +197,7 @@ exit_code: 0
 (empty)
 ```
 
-**`make test`:** green.
+**`make test`:** all passed.
 
 ```
 python -m pytest tests/ -q
@@ -209,12 +205,12 @@ python -m pytest tests/ -q
 16 passed in 1.35s
 ```
 
-**This is the finding.** The starter suite cannot see this fault. The real data only contains `GOOD`, `MISTY` and `BAD`,
-so the encoder never meets an unknown label, the guard is never exercised, and every test passes with or without it.
-The guard only protects against data we do not have yet, so it needs a test that feeds it data we do not have.
+**This was the surprise.** The starter tests can't catch this fault at all. The real data only has `GOOD`, `MISTY`
+and `BAD` weather, so the error check never runs, and the tests pass whether it's there or not. To test a check for bad
+data, you have to give it bad data on purpose.
 
-**Fix (8 turns):** a session added `test_weather_encoder_rejects_unknown_labels`, which calls `encode_weather` on a
-series containing `"STORM"` and expects `ValueError`. Run against the faulty encoder, it failed:
+**Fix (8 turns):** the agent added `test_weather_encoder_rejects_unknown_labels`. It gives the encoder a made-up label,
+`"STORM"`, and expects an error. With the broken encoder, it failed:
 
 ```
 python -m pytest tests/ -q
@@ -237,8 +233,8 @@ FAILED tests/test_leakage.py::test_weather_encoder_rejects_unknown_labels - F...
 make: *** [Makefile:15: test] Error 1
 ```
 
-It then restored the `raise`, and all tests passed. To confirm the hook now covers this fault, I seeded it a second time
-after the new test was committed. This time the hook fired:
+Then it put the `raise` back, and all the tests passed. To make sure the hook now catches this, I broke it again after
+adding the test. This time the hook fired:
 
 ```
 exit_code: 2
@@ -266,45 +262,50 @@ FAILED tests/test_leakage.py::test_weather_encoder_rejects_unknown_labels - F...
 
 ## Fault 4: the raw data overwritten from Bash (the one the hook cannot see)
 
-**Change:** an edited copy of the CSV (the `temp` for 2012-07-04 changed from 29.09 to 15.0, re-saved with Python's
-`csv` writer) was copied over `data/raw/bike_daily.csv` from a Bash command.
+**Change:** I made an edited copy of the data, with the temperature for 2012-07-04 changed from 29.09 to 15.0. Then I
+had the agent copy it over `data/raw/bike_daily.csv` using a Bash command.
 
-**What happened.** The tutorial says a `cp` is not stopped by the `Write(./data/raw/**)` deny rule. In Claude Code
-2.1.332, it was:
+**What happened.** The tutorial says the `Write(./data/raw/**)` rule doesn't block `cp`. In Claude Code 2.1.332 it
+actually did:
 
 ```
 $ cp bike_daily_fixed.csv data/raw/bike_daily.csv
 Permission to use Bash with command cp bike_daily_fixed.csv data/raw/bike_daily.csv has been denied.
 ```
 
-So this version of Claude Code checks the target of a plain `cp` against the deny rules. The point of the exercise still
-holds one step further out. The same write done through Python went straight through, with no denial and no hook:
+So this version of Claude Code is a bit smarter than the tutorial says. The main point still holds, though: doing the
+same copy through Python went right through, with no block and no hook:
 
 ```
 $ python -c "import shutil; shutil.copy('bike_daily_fixed.csv', 'data/raw/bike_daily.csv')"
 (Bash completed with no output)
 ```
 
-- **Hook:** never ran. The `PostToolUse` matcher is `Edit|Write`, and this was a `Bash` call.
-- **Raw file hash:** changed from `a6bed1577f6e4de5...` to `42fa208b2fa85612...`.
-- **`make test`:** still green.
+- **Hook:** never ran. It only watches `Edit` and `Write`, and this was a `Bash` command.
+- **Raw file fingerprint (hash):** changed from `a6bed1577f6e4de5...` to `42fa208b2fa85612...`.
+- **`make test`:** still passed.
 
 ```
 .................                                                        [100%]
 17 passed in 1.19s
 ```
 
-Nothing in the pipeline noticed that its input data had changed.
+Nothing noticed that the data had changed.
 
 **What would catch it:**
-- **A hash check on the raw file** (implemented). This one doesn't care how the file was changed.
-- **A `PreToolUse` hook on `Bash`** that refuses any command mentioning `data/raw/`. It can be bypassed by building the path in code.
-- **A `Stop` hook** that runs `make test`. It only helps once a test can see the change, which needs the hash check anyway.
-- **A filesystem permission** (`chmod -w data/raw/`), which stops every write method, but can be undone by the agent with `chmod`.
-- **`git status`**, which shows the file as modified.
+- **A hash check on the raw file** (I added this one). It catches any change, no matter how it was made.
+- **A `PreToolUse` hook on Bash** that blocks commands mentioning `data/raw/`. But you could get around it by building
+  the path in code.
+- **A `Stop` hook** that runs `make test`. It only helps if some test can see the change, so it needs the hash check anyway.
+- **Making the folder read-only** (`chmod -w data/raw/`). That blocks every kind of write, but the agent could undo it.
+- **`git status`**, which would show the file as changed.
 
-**Implemented (11 turns):** `RAW_SHA256` in `src/config.py`, `load_raw()` refusing a file whose sha256 does not
-match, and `test_raw_data_is_unchanged` in `tests/test_contract.py`. Diff:
+**What I added (11 turns):**
+- the correct fingerprint, `RAW_SHA256`, in `src/config.py`
+- a check in `load_raw()` that refuses to load the data if the fingerprint doesn't match
+- a test, `test_raw_data_is_unchanged`
+
+Diff:
 
 ```diff
 diff --git a/src/config.py b/src/config.py
@@ -397,7 +398,7 @@ index 13eb495..b71ac71 100644
      a model feature with no one deciding it should. Every raw column must be
 ```
 
-**`make test` against the overwritten file, with the guard in place:**
+**`make test` on the changed file, with the check added:**
 
 ```
 __________________________ test_raw_data_is_unchanged __________________________
@@ -438,18 +439,21 @@ ERROR tests/test_split.py::test_no_overlapping_dates - ValueError: /tmp/claud...
 make: *** [Makefile:15: test] Error 1
 ```
 
-The 14 errors are every test that loads the raw file. They fail with the same `ValueError` from `load_raw()`, so
-`make features` and `make train` would refuse to run too. The raw file was then restored with
-`git checkout -- data/raw/bike_daily.csv`. Its sha256 begins `a6bed1577f6e4de5` again, and `make test` passes.
+The 14 errors are all the tests that load the data. They all fail with the same error, so `make features` and
+`make train` would refuse to run too. Afterwards I put the original file back with `git checkout`. Its fingerprint
+starts with `a6bed1577f6e4de5` again, and all tests pass.
 
 ---
 
 ## Extra: a leaked column renamed to something innocent
 
-`test_no_forbidden_features` only checks names, and `feature_columns()` is a denylist, so
-`out["riders_a"] = out["casual"]` would reach the model with every test green. I added
-`test_no_feature_restates_a_leakage_column`. It fails if any feature is an exact affine copy of a leakage column, or if
-the features reproduce `cnt` exactly by least squares. Hook output with `riders_a` added:
+The starter test only checks column names. So if someone wrote `out["riders_a"] = out["casual"]`, the leaked column
+would get into the model under a new name and every test would pass. I added
+`test_no_feature_restates_a_leakage_column`. It looks at the actual numbers and fails if:
+- any feature is basically a copy of a leaked column, or
+- the features can rebuild `cnt` exactly.
+
+Hook output with `riders_a` added:
 
 ```
 exit_code: 2
@@ -481,12 +485,13 @@ FAILED tests/test_leakage.py::test_no_feature_restates_a_leakage_column - Ass...
 
 ## Extra: the first run of the `/seed-fault` skill
 
-`/seed-fault change cnt_lag_7 to use shift(6) instead of shift(LAG_WARMUP)` came back **MISSED**:
-- **Hook:** exit 0, with no feedback.
+The first time I used my skill, `/seed-fault change cnt_lag_7 to use shift(6) instead of shift(LAG_WARMUP)`, it came
+back **Missed**:
+- **Hook:** no warning.
 - **`make test`:** 19 passed, the same as before.
-- **Why:** the only calendar-lag test checks `cnt_lag_1`, and the row-loss bound does not move.
+- **Why:** the starter only tests `cnt_lag_1`, not `cnt_lag_7`.
 
-The skill restored the file. I then added `test_lag_7_is_a_true_calendar_lag`, and with the fault re-seeded the hook now fires:
+The skill put the file back. Then I added `test_lag_7_is_a_true_calendar_lag`, and when I broke it again, the hook caught it:
 
 ```
 --- stderr ---

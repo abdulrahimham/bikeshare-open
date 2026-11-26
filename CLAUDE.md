@@ -8,10 +8,10 @@ rides) from calendar, weather, and lagged-demand features.
 - `make features` - build `data/processed/features.parquet`
 - `make train` - fit models, write `reports/metrics.json`
 - `make test` - pytest; run this before claiming anything works
-- `make all` - the three pipeline stages in order; reproduces the headline
-  numbers in `reports/metrics.json`
-- `/seed-fault <description>` - break one thing on purpose, record what the
-  hook and tests did, restore
+- `make all` - the three pipeline stages in order; gives the numbers in
+  `reports/metrics.json`
+- `/seed-fault <description>` - break one thing on purpose, see if the hook
+  and tests catch it, then put it back
 
 ## Non-negotiable rules
 - **Never** put `casual` or `registered` in a feature set:
@@ -23,12 +23,12 @@ rides) from calendar, weather, and lagged-demand features.
 - Any new lag or rolling feature must be built on a gap-free calendar
   index (`src.features.reindex_to_calendar`) and must `.shift(1)` before
   it aggregates. Add a test for it in `tests/test_leakage.py`.
-- `data/raw/` is immutable by any route, Bash included. `load_raw()` checks
-  `RAW_SHA256`; never "fix" a mismatch by editing the hash. A new raw column
-  must be added to `FORBIDDEN`, `RAW_FEATURE_COLS` or `SOURCE_COLS` first.
-- `python -m src.train --target diff|ratio` is exploratory: iterate with
-  `--splits valid`. Test is scored once per question, after the choice is
-  logged in `docs/DECISIONS.md`. `reports/metrics.json` is the raw target.
+- **Never** change `data/raw/`, not even through Bash. `load_raw()` checks
+  `RAW_SHA256`; don't "fix" a mismatch by changing the hash. A new raw
+  column must be added to `FORBIDDEN`, `RAW_FEATURE_COLS` or `SOURCE_COLS`.
+- `python -m src.train --target diff|ratio` is for trying things: use
+  `--splits valid`. Check test only once, after writing the choice in
+  `docs/DECISIONS.md`. `reports/metrics.json` always uses the normal target.
 - Report the mean baseline **and** the persistence baseline (yesterday's
   count) alongside every model. A negative R^2 is a finding, not a bug
   to hide.
