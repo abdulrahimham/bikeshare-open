@@ -8,11 +8,12 @@ from src.config import (
     LAG_WARMUP,
     RAW,
     RAW_FEATURE_COLS,
+    RAW_SHA256,
     SOURCE_COLS,
     TARGET,
 )
 from src.features import build_features, feature_columns, reindex_to_calendar
-from src.ingest import load_raw
+from src.ingest import load_raw, sha256_of
 from src.train import MODELS, temporal_split
 
 
@@ -31,6 +32,15 @@ def unclassified_columns(path) -> set[str]:
     Reads only the header, so it does not depend on the feature builder."""
     header = set(pd.read_csv(path, nrows=0).columns)
     return header - FORBIDDEN - RAW_FEATURE_COLS - SOURCE_COLS - {"dteday"}
+
+
+def test_raw_data_is_unchanged():
+    """data/raw/ is read-only. Any edit, however it was made (editor, script,
+    shutil.copy), changes the hash and must fail here, not slip through."""
+    actual = sha256_of(RAW)
+    assert actual == RAW_SHA256, (
+        f"{RAW} sha256 is {actual}, expected {RAW_SHA256}"
+    )
 
 
 def test_every_raw_column_is_classified():
